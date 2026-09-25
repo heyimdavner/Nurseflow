@@ -1,0 +1,6 @@
+{
+  "name": "NurseFlow",
+  "description": "Nursing student clinical duty scheduler, attendance & syllabus tracker, skills logbook, and performance analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
