@@ -20,10 +20,12 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { useNurseFlow } from '../../context/NurseFlowContext';
+import { useAuth } from '../../context/AuthContext';
 import { ShiftDefinition } from '../../types';
 import { InstanceClonerSection } from './InstanceClonerSection';
 
 export const SettingsTab: React.FC = () => {
+  const { signOut } = useAuth();
   const { 
     user, 
     updateUserProfile, 
@@ -50,6 +52,9 @@ export const SettingsTab: React.FC = () => {
 
   // Custom ward tag state
   const [newTag, setNewTag] = useState('');
+  
+  // Specific Wards state
+  const [newSpecificWard, setNewSpecificWard] = useState('');
 
   // Custom shift form state
   const [isAddingShift, setIsAddingShift] = useState(false);
@@ -77,17 +82,40 @@ export const SettingsTab: React.FC = () => {
 
   const handleAddWardTag = () => {
     const clean = newTag.trim();
-    if (clean && !user.customWards.includes(clean)) {
-      updateUserProfile({
-        customWards: [...user.customWards, clean]
-      });
-      setNewTag('');
+    if (clean) {
+      const newTags = clean.split(',').map(t => t.trim()).filter(t => t && !user.customWards.includes(t));
+      if (newTags.length > 0) {
+        updateUserProfile({
+          customWards: [...user.customWards, ...newTags]
+        });
+        setNewTag('');
+      }
     }
   };
 
   const handleRemoveWardTag = (tagToRemove: string) => {
     updateUserProfile({
       customWards: user.customWards.filter(t => t !== tagToRemove)
+    });
+  };
+
+  const handleAddSpecificWard = () => {
+    const clean = newSpecificWard.trim();
+    const wards = user.specificWards || [];
+    if (clean) {
+      const newWards = clean.split(',').map(w => w.trim()).filter(w => w && !wards.includes(w));
+      if (newWards.length > 0) {
+        updateUserProfile({
+          specificWards: [...wards, ...newWards]
+        });
+        setNewSpecificWard('');
+      }
+    }
+  };
+
+  const handleRemoveSpecificWard = (wardToRemove: string) => {
+    updateUserProfile({
+      specificWards: (user.specificWards || []).filter(w => w !== wardToRemove)
     });
   };
 
@@ -129,7 +157,7 @@ export const SettingsTab: React.FC = () => {
           const success = importDataJSON(event.target?.result as string);
           if (success) {
             setImportStatus(`Success! Found profile for ${parsed.user?.name || 'Unknown'} with ${parsed.duties?.length || 0} duties. Reloading...`);
-            setTimeout(() => window.location.reload(), 2000);
+            // setTimeout(() => window.location.reload(), 2000); // Removed to prevent interrupting Firebase uploads
           } else {
             setImportStatus('Failed to restore some backup data.');
           }
@@ -307,6 +335,55 @@ export const SettingsTab: React.FC = () => {
               Add Tag
             </button>
           </div>
+          
+          <hr className="border-white/10 my-6" />
+
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-purple-400" />
+              <span>Specific Wards ({(user.specificWards || []).length})</span>
+            </h3>
+          </div>
+
+          <p className="text-xs text-zinc-400 mb-3">
+            These populate the Specific Ward dropdown on your calendar.
+          </p>
+
+          <div className="flex flex-wrap gap-2 p-3 rounded-2xl bg-black/20 border border-white/10 min-h-[70px] max-h-[150px] overflow-y-auto mb-3 backdrop-blur-sm">
+            {(user.specificWards || []).map(ward => (
+              <span
+                key={ward}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-medium bg-white/10 border border-white/15 text-purple-200"
+              >
+                <span>{ward}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveSpecificWard(ward)}
+                  className="text-zinc-400 hover:text-white"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newSpecificWard}
+              onChange={(e) => setNewSpecificWard(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddSpecificWard(); }}
+              placeholder="+ Add new ward (paste comma separated list)..."
+              className="flex-1 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none"
+            />
+            <button
+              onClick={handleAddSpecificWard}
+              disabled={!newSpecificWard.trim()}
+              className="px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-bold disabled:opacity-30 transition-colors"
+            >
+              Add Ward
+            </button>
+          </div>
         </div>
 
         {/* 3. CUSTOM SHIFT DEFINITIONS LIBRARY */}
@@ -359,7 +436,7 @@ export const SettingsTab: React.FC = () => {
                     className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-cyan-300 font-mono text-xs uppercase"
                   />
                 </div>
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-3">
                   <label className="block text-[10px] uppercase font-bold text-zinc-400 mb-1">Shift Name</label>
                   <input
                     type="text"
@@ -371,13 +448,52 @@ export const SettingsTab: React.FC = () => {
                   />
                 </div>
                 <div>
+                  <label className="block text-[10px] uppercase font-bold text-zinc-400 mb-1">Start Time</label>
+                  <input
+                    type="time"
+                    required
+                    value={newShiftStartTime}
+                    onChange={(e) => {
+                      setNewShiftStartTime(e.target.value);
+                      if (e.target.value && newShiftEndTime) {
+                        const [sH, sM] = e.target.value.split(':').map(Number);
+                        const [eH, eM] = newShiftEndTime.split(':').map(Number);
+                        let h = eH - sH + (eM - sM) / 60;
+                        if (h < 0) h += 24;
+                        setNewShiftHours(String(Math.round(h * 10) / 10));
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-zinc-400 mb-1">End Time</label>
+                  <input
+                    type="time"
+                    required
+                    value={newShiftEndTime}
+                    onChange={(e) => {
+                      setNewShiftEndTime(e.target.value);
+                      if (newShiftStartTime && e.target.value) {
+                        const [sH, sM] = newShiftStartTime.split(':').map(Number);
+                        const [eH, eM] = e.target.value.split(':').map(Number);
+                        let h = eH - sH + (eM - sM) / 60;
+                        if (h < 0) h += 24;
+                        setNewShiftHours(String(Math.round(h * 10) / 10));
+                      }
+                    }}
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white font-mono text-xs"
+                  />
+                </div>
+                <div>
                   <label className="block text-[10px] uppercase font-bold text-zinc-400 mb-1">Hours</label>
                   <input
                     type="number"
-                    step="0.5"
+                    step="0.1"
+                    required
                     value={newShiftHours}
                     onChange={(e) => setNewShiftHours(e.target.value)}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white font-mono text-xs"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-cyan-300 font-mono text-xs font-bold"
                   />
                 </div>
                 <div className="flex items-end gap-1">
@@ -537,6 +653,15 @@ export const SettingsTab: React.FC = () => {
               <AlertTriangle className="w-4 h-4" />
               <span>Reset Database to Clean Slate</span>
             </button>
+            <button
+              onClick={async () => {
+                await signOut();
+              }}
+              className="w-full flex items-center justify-center gap-1.5 p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold border border-zinc-700 transition-colors mt-3"
+            >
+              <span>Sign Out of NurseFlow Cloud</span>
+            </button>
+
           </div>
         </div>
 

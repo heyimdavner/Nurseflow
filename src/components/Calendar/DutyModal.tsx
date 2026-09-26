@@ -52,6 +52,9 @@ export const DutyModal: React.FC<DutyModalProps> = ({
   const [customHours, setCustomHours] = useState<string>(
     existingDuty?.customHours !== undefined ? String(existingDuty.customHours) : ''
   );
+  const [customStartTime, setCustomStartTime] = useState<string>(existingDuty?.customStartTime || '');
+  const [customEndTime, setCustomEndTime] = useState<string>(existingDuty?.customEndTime || '');
+  
   const [isCustomHoursEnabled, setIsCustomHoursEnabled] = useState<boolean>(
     existingDuty?.customHours !== undefined
   );
@@ -61,6 +64,12 @@ export const DutyModal: React.FC<DutyModalProps> = ({
   // Bulk add mode
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [bulkDatesText, setBulkDatesText] = useState('');
+  
+  // Bulk Auto-Generator states
+  const [bulkGenStartDate, setBulkGenStartDate] = useState<string>(selectedDate);
+  const [bulkGenEndDate, setBulkGenEndDate] = useState<string>(selectedDate);
+  // 0=Sun, 1=Mon, ..., 6=Sat. Default to Mon-Fri
+  const [bulkGenDays, setBulkGenDays] = useState<number[]>([1, 2, 3, 4, 5]);
 
   // Reset form when opened with different date or existingDuty
   useEffect(() => {
@@ -71,6 +80,8 @@ export const DutyModal: React.FC<DutyModalProps> = ({
       setSpecificWard(existingDuty.specificWard || lastSelectedWard.specificWard || '3B');
       setWardCategory(existingDuty.wardCategory || lastSelectedWard.wardCategory || user.customWards[0] || 'Medical');
       setCustomHours(existingDuty.customHours !== undefined ? String(existingDuty.customHours) : '');
+      setCustomStartTime(existingDuty.customStartTime || '');
+      setCustomEndTime(existingDuty.customEndTime || '');
       setIsCustomHoursEnabled(existingDuty.customHours !== undefined);
       setNotes(existingDuty.notes || '');
       setLectureTopic(existingDuty.lectureTopic || '');
@@ -81,13 +92,51 @@ export const DutyModal: React.FC<DutyModalProps> = ({
       setSpecificWard(lastSelectedWard.specificWard || '3B');
       setWardCategory(lastSelectedWard.wardCategory || user.customWards[0] || 'Medical');
       setCustomHours('');
+      setCustomStartTime('');
+      setCustomEndTime('');
       setIsCustomHoursEnabled(false);
       setNotes('');
       setLectureTopic('');
       setIsBulkMode(false);
       setBulkDatesText('');
+      setBulkGenStartDate(selectedDate);
+      setBulkGenEndDate(selectedDate);
     }
   }, [existingDuty, selectedDate, isOpen, lastSelectedWard, user.customWards]);
+
+  const toggleBulkGenDay = (dayIndex: number) => {
+    setBulkGenDays(prev => 
+      prev.includes(dayIndex) ? prev.filter(d => d !== dayIndex) : [...prev, dayIndex]
+    );
+  };
+
+  const handleGenerateDates = () => {
+    if (!bulkGenStartDate || !bulkGenEndDate) return;
+    
+    const start = new Date(bulkGenStartDate);
+    const end = new Date(bulkGenEndDate);
+    
+    if (end < start) return; // Invalid range
+    
+    const dates: string[] = [];
+    const current = new Date(start);
+    
+    while (current <= end) {
+      if (bulkGenDays.includes(current.getDay())) {
+        const y = current.getFullYear();
+        const m = (current.getMonth() + 1).toString().padStart(2, '0');
+        const d = current.getDate().toString().padStart(2, '0');
+        dates.push(`${y}-${m}-${d}`);
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    
+    setBulkDatesText(prev => {
+      const existing = prev.trim();
+      const newDates = dates.join('\n');
+      return existing ? existing + '\n' + newDates : newDates;
+    });
+  };
 
   if (!isOpen) return null;
 
@@ -99,13 +148,15 @@ export const DutyModal: React.FC<DutyModalProps> = ({
     const createDutyPayload = (targetDate: string): Omit<Duty, 'id' | 'userId'> => ({
       date: targetDate,
       type,
-      shiftCode,
+      shiftCode: type === 'Academic Lecture' ? 'LEC' : shiftCode,
       status,
       notes: notes.trim(),
       ...(type === 'Clinical Shift' ? {
         specificWard,
         wardCategory,
-        customHours: isCustomHoursEnabled && customHours !== '' ? Number(customHours) : undefined
+        customHours: isCustomHoursEnabled && customHours !== '' ? Number(customHours) : undefined,
+        customStartTime: isCustomHoursEnabled ? customStartTime : undefined,
+        customEndTime: isCustomHoursEnabled ? customEndTime : undefined
       } : {
         lectureTopic: lectureTopic.trim()
       })
@@ -175,12 +226,63 @@ export const DutyModal: React.FC<DutyModalProps> = ({
                   Date: {selectedDate}
                 </p>
               ) : (
-                <div className="mt-2.5">
+                <div className="mt-2.5 space-y-2">
+                  
+                  {/* Auto-Generator Toolkit */}
+                  <div className="bg-slate-900/60 border border-slate-700/50 rounded-lg p-2 flex flex-col gap-2">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1">
+                        <CalendarIcon className="w-3 h-3" /> Auto-Generate
+                      </span>
+                      <div className="flex gap-1">
+                        {['S','M','T','W','T','F','S'].map((day, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => toggleBulkGenDay(idx)}
+                            className={`w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center transition-colors ${
+                              bulkGenDays.includes(idx)
+                                ? 'bg-cyan-500 text-slate-950'
+                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700'
+                            }`}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row items-center gap-2">
+                      <div className="flex flex-1 w-full gap-2 items-center">
+                        <input 
+                          type="date" 
+                          value={bulkGenStartDate}
+                          onChange={e => setBulkGenStartDate(e.target.value)}
+                          className="flex-1 min-w-0 bg-slate-950 border border-slate-700 p-1.5 rounded-lg text-cyan-300 text-[11px] focus:outline-none"
+                        />
+                        <span className="text-slate-500 text-xs">-</span>
+                        <input 
+                          type="date" 
+                          value={bulkGenEndDate}
+                          onChange={e => setBulkGenEndDate(e.target.value)}
+                          className="flex-1 min-w-0 bg-slate-950 border border-slate-700 p-1.5 rounded-lg text-cyan-300 text-[11px] focus:outline-none"
+                        />
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={handleGenerateDates}
+                        className="w-full sm:w-auto px-3 py-1.5 bg-cyan-900/50 hover:bg-cyan-800/60 border border-cyan-800 text-cyan-300 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+                      >
+                        Generate Dates
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Date Textarea */}
                   <textarea 
                     value={bulkDatesText}
                     onChange={(e) => setBulkDatesText(e.target.value)}
                     placeholder="Enter dates (YYYY-MM-DD) separated by spaces or newlines"
-                    className="w-full bg-slate-950 border border-slate-700/80 p-2.5 rounded-xl text-cyan-300 font-mono text-xs focus:ring-2 focus:ring-cyan-500/50 focus:outline-none h-20 placeholder:text-slate-600 resize-none shadow-inner"
+                    className="w-full bg-slate-950 border border-slate-700/80 p-2.5 rounded-xl text-cyan-300 font-mono text-xs focus:ring-2 focus:ring-cyan-500/50 focus:outline-none h-24 placeholder:text-slate-600 resize-none shadow-inner"
                   />
                   <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3 text-amber-500" />
@@ -232,59 +334,98 @@ export const DutyModal: React.FC<DutyModalProps> = ({
             </div>
           </div>
 
-          {/* Shift Code & Hours */}
-          <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                Shift Code &amp; Standard Library
-              </label>
-              {currentShift && (
-                <span className="text-xs text-cyan-300 font-mono font-semibold">
-                  {currentShift.startTime} - {currentShift.endTime} ({currentShift.hours}h)
-                </span>
-              )}
+          {/* Shift Code & Hours (Only for Clinical Shifts) */}
+          {type === 'Clinical Shift' && (
+            <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                  Shift Code &amp; Standard Library
+                </label>
+                {currentShift && (
+                  <span className="text-xs text-cyan-300 font-mono font-semibold">
+                    {currentShift.startTime} - {currentShift.endTime} ({currentShift.hours}h)
+                  </span>
+                )}
+              </div>
+
+              <select
+                id="duty-shift-code-select"
+                value={shiftCode}
+                onChange={(e) => setShiftCode(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+              >
+                {shifts.map((s) => (
+                  <option key={s.code} value={s.code}>
+                    {s.code} - {s.name} ({s.hours} Hours) [{s.startTime} - {s.endTime}]
+                  </option>
+                ))}
+              </select>
+
+              {/* Custom Hours Toggle */}
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isCustomHoursEnabled}
+                      onChange={(e) => setIsCustomHoursEnabled(e.target.checked)}
+                      className="rounded bg-slate-800 border-slate-700 text-cyan-500 focus:ring-0"
+                    />
+                    <span>Override with custom hours</span>
+                  </label>
+                  {isCustomHoursEnabled && (
+                    <span className="text-xs font-mono font-bold text-cyan-400">
+                      {customHours || '0'} hrs
+                    </span>
+                  )}
+                </div>
+
+                {isCustomHoursEnabled && (
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">Start Time</label>
+                      <input
+                        type="time"
+                        value={customStartTime}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomStartTime(val);
+                          if (val && customEndTime) {
+                            const [sH, sM] = val.split(':').map(Number);
+                            const [eH, eM] = customEndTime.split(':').map(Number);
+                            let h = eH - sH + (eM - sM) / 60;
+                            if (h < 0) h += 24;
+                            setCustomHours(String(Math.round(h * 10) / 10));
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-slate-500 mb-1">End Time</label>
+                      <input
+                        type="time"
+                        value={customEndTime}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomEndTime(val);
+                          if (customStartTime && val) {
+                            const [sH, sM] = customStartTime.split(':').map(Number);
+                            const [eH, eM] = val.split(':').map(Number);
+                            let h = eH - sH + (eM - sM) / 60;
+                            if (h < 0) h += 24;
+                            setCustomHours(String(Math.round(h * 10) / 10));
+                          }
+                        }}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-xs focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-
-            <select
-              id="duty-shift-code-select"
-              value={shiftCode}
-              onChange={(e) => setShiftCode(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
-            >
-              {shifts.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.code} - {s.name} ({s.hours} Hours) [{s.startTime} - {s.endTime}]
-                </option>
-              ))}
-            </select>
-
-            {/* Custom Hours Toggle */}
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isCustomHoursEnabled}
-                  onChange={(e) => setIsCustomHoursEnabled(e.target.checked)}
-                  className="rounded bg-slate-800 border-slate-700 text-cyan-500 focus:ring-0"
-                />
-                <span>Override with custom hours</span>
-              </label>
-
-              {isCustomHoursEnabled && (
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  max="24"
-                  value={customHours}
-                  onChange={(e) => setCustomHours(e.target.value)}
-                  placeholder="e.g. 7.5"
-                  className="w-24 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-cyan-300 text-xs font-mono text-right focus:outline-none"
-                />
-              )}
-            </div>
-          </div>
+          )}
 
           {/* Duty Status Selector */}
           <div>
@@ -322,7 +463,7 @@ export const DutyModal: React.FC<DutyModalProps> = ({
                   onChange={(e) => setSpecificWard(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-cyan-300 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                 >
-                  {CLINICAL_WARDS_28.map(w => (
+                  {(user.specificWards || CLINICAL_WARDS_28).map(w => (
                     <option key={w} value={w}>Ward {w}</option>
                   ))}
                 </select>

@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react';
+import { db } from '../lib/firebase';
+import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { useAuth } from './AuthContext';
 import { 
   UserProfile, 
   Duty, 
@@ -133,6 +136,7 @@ const DEFAULT_USER: UserProfile = {
   programStartDate: new Date().toISOString().split('T')[0],
   programEndDate: new Date(Date.now() + 86400000 * 365 * 3).toISOString().split('T')[0],
   customWards: [],
+  specificWards: [...CLINICAL_WARDS_28],
   semester2TargetHours: 105.0,
   frostedGlass: true,
   theme: 'dark',
@@ -227,6 +231,34 @@ const INITIAL_ASSIGNMENTS: Assignment[] = [
 const NurseFlowContext = createContext<NurseFlowContextType | undefined>(undefined);
 
 export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user: authUser } = useAuth();
+  const [isCloudLoaded, setIsCloudLoaded] = useState(false);
+
+  // Cloud Fetch
+  useEffect(() => {
+    if (!authUser) return;
+    const fetchCloudData = async () => {
+      try {
+        const collections = ['profile', 'duties', 'modules', 'procedures', 'assignments', 'customShifts', 'exams'];
+        for (const col of collections) {
+          const d = await getDoc(doc(db, 'users', authUser.uid, 'data', col));
+          console.log('Fetched', col, d.exists());
+          if (d.exists()) {
+            const raw = d.data().data; const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (col === 'profile' && data.lsn) setUser(data);
+            if (col === 'duties' && Array.isArray(data)) setDuties(data);
+            if (col === 'modules' && Array.isArray(data)) setModules(data);
+            if (col === 'procedures' && Array.isArray(data)) setProcedures(data);
+            if (col === 'assignments' && Array.isArray(data)) setAssignments(data);
+            if (col === 'customShifts' && Array.isArray(data)) setCustomShifts(data);
+            if (col === 'exams' && Array.isArray(data)) setExams(data);
+          }
+        }
+      } catch(e) { console.error('Cloud fetch error', e); return; }
+      setIsCloudLoaded(true);
+    };
+    fetchCloudData();
+  }, [authUser]);
   // 1. User Profile State
   const [user, setUser] = useState<UserProfile>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.USER);
@@ -263,7 +295,7 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const shifts = useMemo(() => {
     return [...STANDARD_SHIFTS, ...customShifts];
-  }, [customShifts]);
+  }, [customShifts, authUser, isCloudLoaded]);
 
   // 5. Duties State
   const [duties, setDuties] = useState<Duty[]>(() => {
@@ -342,35 +374,42 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
   // Sync to LocalStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
-  }, [user]);
+    if (authUser && isCloudLoaded) setDoc(doc(db, 'users', authUser.uid, 'data', 'profile'), { data: JSON.stringify(user) });
+  }, [user, authUser, isCloudLoaded]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.DUTIES, JSON.stringify(duties));
-  }, [duties]);
+    if (authUser && isCloudLoaded) setDoc(doc(db, 'users', authUser.uid, 'data', 'duties'), { data: JSON.stringify(duties) });
+  }, [duties, authUser, isCloudLoaded]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.MODULES, JSON.stringify(modules));
-  }, [modules]);
+    if (authUser && isCloudLoaded) setDoc(doc(db, 'users', authUser.uid, 'data', 'modules'), { data: JSON.stringify(modules) });
+  }, [modules, authUser, isCloudLoaded]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.PROCEDURES, JSON.stringify(procedures));
-  }, [procedures]);
+    if (authUser && isCloudLoaded) setDoc(doc(db, 'users', authUser.uid, 'data', 'procedures'), { data: JSON.stringify(procedures) });
+  }, [procedures, authUser, isCloudLoaded]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.ASSIGNMENTS, JSON.stringify(assignments));
-  }, [assignments]);
+    if (authUser && isCloudLoaded) setDoc(doc(db, 'users', authUser.uid, 'data', 'assignments'), { data: JSON.stringify(assignments) });
+  }, [assignments, authUser, isCloudLoaded]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.CUSTOM_SHIFTS, JSON.stringify(customShifts));
-  }, [customShifts]);
+    if (authUser && isCloudLoaded) setDoc(doc(db, 'users', authUser.uid, 'data', 'customShifts'), { data: JSON.stringify(customShifts) });
+  }, [customShifts, authUser, isCloudLoaded]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.EXAMS, JSON.stringify(exams));
-  }, [exams]);
+    if (authUser && isCloudLoaded) setDoc(doc(db, 'users', authUser.uid, 'data', 'exams'), { data: JSON.stringify(exams) });
+  }, [exams, authUser, isCloudLoaded]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.LAST_WARD, JSON.stringify(lastSelectedWard));
-  }, [lastSelectedWard]);
+  }, [lastSelectedWard, authUser, isCloudLoaded]);
 
   // Apply dark / light theme to document element
   useEffect(() => {
@@ -818,7 +857,7 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
       name: `${source.name} (Repeat Study)`,
       isRepeated: true,
       repeatTag: 'Repeat Track',
-      units: source.units.map((u, idx) => ({
+      units: (source.units || []).map((u, idx) => ({
         ...u,
         id: `${u.id}-rep-${idx}-${Date.now()}`,
         moduleId: newModuleId,
@@ -835,7 +874,7 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (m.id !== moduleId) return m;
       return {
         ...m,
-        units: m.units.map(u => (u.id === unitId ? { ...u, studied: !u.studied } : u))
+        units: (m.units || []).map(u => (u.id === unitId ? { ...u, studied: !u.studied } : u))
       };
     }));
   };
@@ -845,7 +884,7 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (m.id !== moduleId) return m;
       return {
         ...m,
-        units: m.units.map(u => (u.id === unitId ? { ...u, written: !u.written } : u))
+        units: (m.units || []).map(u => (u.id === unitId ? { ...u, written: !u.written } : u))
       };
     }));
   };
@@ -855,7 +894,7 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (m.id !== moduleId) return m;
       return {
         ...m,
-        units: m.units.map(u => (u.id === unitId ? { ...u, classroomUrl: url } : u))
+        units: (m.units || []).map(u => (u.id === unitId ? { ...u, classroomUrl: url } : u))
       };
     }));
   };
@@ -866,7 +905,7 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
     let writtenUnits = 0;
 
     modules.forEach(m => {
-      m.units.forEach(u => {
+      (m.units || []).forEach(u => {
         totalUnits++;
         if (u.studied) studiedUnits++;
         if (u.written) writtenUnits++;
@@ -877,7 +916,7 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
     const percentWritten = totalUnits > 0 ? Math.round((writtenUnits / totalUnits) * 100) : 0;
 
     return { totalUnits, studiedUnits, writtenUnits, percentStudied, percentWritten };
-  }, [modules]);
+  }, [modules, authUser, isCloudLoaded]);
 
   // 7. Exam Mappings
   const addExam = (exam: ExamMapping) => {
@@ -909,7 +948,7 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
   const toggleAssignmentChecklist = (assignmentId: string, checklistId: string) => {
     setAssignments(prev => prev.map(a => {
       if (a.id !== assignmentId) return a;
-      const updatedChecklist = a.checklist.map(item =>
+      const updatedChecklist = (a.checklist || []).map(item =>
         item.id === checklistId ? { ...item, completed: !item.completed } : item
       );
       const allDone = updatedChecklist.length > 0 && updatedChecklist.every(i => i.completed);
@@ -997,7 +1036,7 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
 
       return a.semester - b.semester || a.procedureName.localeCompare(b.procedureName);
     });
-  }, [procedures]);
+  }, [procedures, authUser, isCloudLoaded]);
 
   // 10. Mock Auth & Data Reset
   const handleMockLogin = () => {
@@ -1020,6 +1059,10 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const resetAllData = () => {
     localStorage.clear();
+    if (authUser) {
+      const collections = ['profile', 'duties', 'modules', 'procedures', 'assignments', 'customShifts', 'exams'];
+      collections.forEach(col => deleteDoc(doc(db, 'users', authUser.uid, 'data', col)));
+    }
     setUser(DEFAULT_USER);
     setDuties([]);
     setModules([]);
@@ -1054,9 +1097,18 @@ export const NurseFlowProvider: React.FC<{ children: ReactNode }> = ({ children 
       const parsed = JSON.parse(jsonStr);
       
       if (parsed.user) {
-        const safeUser = { ...DEFAULT_USER, ...parsed.user };
-        setUser(safeUser);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(safeUser));
+        setUser(prev => {
+          const safeUser = { ...prev, ...parsed.user };
+          // For nested arrays like specificWards, ensure they merge or take parsed
+          if (parsed.user.specificWards) {
+            safeUser.specificWards = Array.from(new Set([...(prev.specificWards || []), ...parsed.user.specificWards]));
+          }
+          if (parsed.user.customWards) {
+            safeUser.customWards = Array.from(new Set([...(prev.customWards || []), ...parsed.user.customWards]));
+          }
+          localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(safeUser));
+          return safeUser;
+        });
       }
       
       if (Array.isArray(parsed.duties)) {

@@ -21,7 +21,17 @@ import {
 import { useNurseFlow } from '../../context/NurseFlowContext';
 import { Module } from '../../types';
 
+import { ErrorBoundary } from './ErrorBoundary';
+
 export const StudyTab: React.FC = () => {
+  return (
+    <ErrorBoundary>
+      <StudyTabContent />
+    </ErrorBoundary>
+  );
+};
+
+const StudyTabContent: React.FC = () => {
   const { 
     modules, 
     user, 
@@ -266,7 +276,7 @@ export const StudyTab: React.FC = () => {
               <Bookmark className="w-3.5 h-3.5 text-amber-400" />
               <span className="font-bold">{exam.name}</span>
               <span className="text-[10px] font-mono text-amber-400/80">({exam.date})</span>
-              <span className="text-[10px] text-zinc-400">[{exam.moduleCodes.length} Modules]</span>
+              <span className="text-[10px] text-zinc-400">[{ (exam.moduleCodes || []).length } Modules]</span>
               <button
                 onClick={() => deleteExam(exam.id)}
                 className="text-zinc-400 hover:text-rose-400 ml-1"
@@ -289,7 +299,7 @@ export const StudyTab: React.FC = () => {
           let semWrittenUnits = 0;
 
           semModules.forEach(m => {
-            m.units.forEach(u => {
+            (m.units || []).forEach(u => {
               semTotalUnits++;
               if (u.studied) semStudiedUnits++;
               if (u.written) semWrittenUnits++;
@@ -349,9 +359,9 @@ export const StudyTab: React.FC = () => {
                   ) : (
                     semModules.map((module) => {
                       const isModExpanded = !!expandedModules[module.id];
-                      const modTotalUnits = module.units.length;
-                      const modStudiedUnits = module.units.filter(u => u.studied).length;
-                      const modWrittenUnits = module.units.filter(u => u.written).length;
+                      const modTotalUnits = (module.units || []).length;
+                      const modStudiedUnits = (module.units || []).filter(u => u.studied).length;
+                      const modWrittenUnits = (module.units || []).filter(u => u.written).length;
                       const isExamMapped = !!module.mappedExam;
 
                       return (
@@ -456,7 +466,7 @@ export const StudyTab: React.FC = () => {
                           {/* LEVEL 3: TOPIC UNITS & DUAL ICON PROGRESS */}
                           {isModExpanded && (
                             <div className="p-3 bg-black/30 border-t border-white/10 space-y-2">
-                              {module.units.map((unit) => (
+                              {(module.units || []).map((unit) => (
                                 <div
                                   key={unit.id}
                                   id={`study-unit-${unit.id}`}
