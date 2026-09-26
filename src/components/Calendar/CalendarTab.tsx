@@ -15,7 +15,6 @@ import {
 import { useNurseFlow } from '../../context/NurseFlowContext';
 import { Duty } from '../../types';
 import { DutyModal } from './DutyModal';
-import { RosterImportModal } from './RosterImportModal';
 
 export const CalendarTab: React.FC = () => {
   const { 
@@ -29,7 +28,6 @@ export const CalendarTab: React.FC = () => {
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [selectedDateForModal, setSelectedDateForModal] = useState<string | null>(null);
   const [isDutyModalOpen, setIsDutyModalOpen] = useState(false);
-  const [isRosterModalOpen, setIsRosterModalOpen] = useState(false);
 
   // Month navigation helpers
   const year = currentDate.getFullYear();
@@ -213,16 +211,6 @@ export const CalendarTab: React.FC = () => {
             ))}
           </div>
 
-          {/* Integrated Roster Upload Button */}
-          <button
-            id="calendar-import-roster-btn"
-            onClick={() => setIsRosterModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-cyan-300 text-xs font-bold transition-all shadow-sm backdrop-blur-sm"
-          >
-            <UploadCloud className="w-4 h-4" />
-            <span>Import PDF Roster</span>
-          </button>
-
           {/* Add Duty Button */}
           <button
             id="calendar-add-duty-btn"
@@ -310,7 +298,7 @@ export const CalendarTab: React.FC = () => {
                     {/* Shift / Type Badge */}
                     <div className="flex items-center gap-1">
                       <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase border truncate ${getStatusBadge(duty.status)}`}>
-                        {duty.shiftCode}
+                        {isAcademic ? 'LEC' : duty.shiftCode}
                       </span>
                       <span className="text-[10px] text-zinc-400 font-medium truncate hidden sm:inline">
                         {duty.status}
@@ -383,14 +371,6 @@ export const CalendarTab: React.FC = () => {
           }}
           selectedDate={selectedDateForModal}
           existingDuty={selectedDuty}
-        />
-      )}
-
-      {/* Roster Import Modal */}
-      {isRosterModalOpen && (
-        <RosterImportModal
-          isOpen={isRosterModalOpen}
-          onClose={() => setIsRosterModalOpen(false)}
         />
       )}
 

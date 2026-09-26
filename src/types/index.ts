@@ -30,6 +30,8 @@ export interface UserProfile {
   programStartDate: string; // YYYY-MM-DD
   programEndDate: string;   // YYYY-MM-DD
   customWards: string[];    // Ward Categories: e.g. 'Medical', 'Surgical', 'Pediatrics', etc.
+  specificWards?: string[]; // Specific Wards: e.g. '3B', 'NICU'
+  sem2ClinicalHoursTarget?: number;
   semester2TargetHours: number; // default 105.0
   frostedGlass: boolean;
   theme: 'dark' | 'light';
@@ -46,6 +48,8 @@ export interface Duty {
   wardCategory?: string;  // e.g. 'Surgical'
   specificWard?: string;  // e.g. '3B', 'NICU'
   customHours?: number;
+  customStartTime?: string;
+  customEndTime?: string;
   notes?: string;
   lectureTopic?: string;
 }

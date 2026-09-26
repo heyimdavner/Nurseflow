@@ -162,8 +162,9 @@ export const AcademicHubTab: React.FC = () => {
             <div className="space-y-3">
               {filteredModules.map((module) => {
                 const isExpanded = !!expandedModules[module.id];
-                const completedWrittenUnits = module.units.filter(u => u.written).length;
-                const progressPct = module.units.length > 0 ? Math.round((completedWrittenUnits / module.units.length) * 100) : 0;
+                const totalUnits = (module.units || []).length;
+                const completedWrittenUnits = (module.units || []).filter(u => u.written).length;
+                const progressPct = totalUnits > 0 ? Math.round((completedWrittenUnits / totalUnits) * 100) : 0;
 
                 return (
                   <div
@@ -200,7 +201,7 @@ export const AcademicHubTab: React.FC = () => {
                       <div className="flex items-center gap-3 flex-shrink-0 text-right">
                         <div>
                           <p className="text-xs font-mono font-bold text-cyan-400">
-                            {completedWrittenUnits}/{module.units.length} Notes
+                            {completedWrittenUnits}/{totalUnits} Notes
                           </p>
                           <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden mt-1 border border-white/5">
                             <div 
@@ -215,7 +216,7 @@ export const AcademicHubTab: React.FC = () => {
                     {/* Nested Topic Units */}
                     {isExpanded && (
                       <div className="border-t border-white/10 bg-black/20 p-3 sm:p-4 space-y-2.5 backdrop-blur-sm">
-                        {module.units.map((unit) => (
+                        {(module.units || []).map((unit) => (
                           <div
                             key={unit.id}
                             id={`unit-item-${unit.id}`}
